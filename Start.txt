@@ -1,0 +1,1036 @@
+My project structure is as follows:
+
+├───back-end
+│   ├───Authentication
+│   ├───routings
+│   └───schemas
+└───front-end
+    ├───public
+    └───src
+        ├───Authentication
+        ├───components
+        │   ├───add
+        │   ├───alert
+        │   ├───Home
+        │   ├───login
+        │   └───navbar
+        └───img
+
+Let me provide the code for the backend files first:
+
+back-end>Authentication>Auth.js:
+require("dotenv").config();
+const jwt = require("jsonwebtoken");
+
+const authenticateJWT = (req, res, next) => {
+  const accessTokenSecret = process.env.TOKEN_SECRET;
+  if (!accessTokenSecret) {
+    return res.sendStatus(401);
+  }
+  const token = req.headers.token;
+
+  const verified = jwt.verify(token, accessTokenSecret);
+  console.log("token : " + verified);
+  req.user = verified;
+  next();
+};
+
+module.exports = authenticateJWT;
+
+back-end>routing>EventRoutes.js:
+
+const express=require('express');
+const router=express.Router();
+const Event = require('../schemas/Event');
+const auth = require("../Authentication/Auth");
+
+router.post('/newEvent',auth, function (req, res, next) {
+    Event.create({
+        
+        name: req.body.name,
+        description: req.body.description,
+        date: req.body.date,
+        time:req.body.time,
+        venue: req.body.venue,
+        image: req.body.image
+      }
+       ).then(function(item){
+        res.send(item);
+      }).catch(next);
+   
+  });
+
+  router.get('/events',function(req,res,next){
+    Event.find({}).then(function(item){
+        res.send(item);
+      });
+  });
+
+  router.delete("/events",auth, function (req, res, next) {
+    Event.findByIdAndRemove({ _id: req.body.id }).then(function (item) {
+      res.send(item);
+    });
+  });
+
+  module.exports=router;
+
+
+back-end>routing>UserRoutes.js:
+
+const express = require('express');
+const router = express.Router();
+const User = require('../schemas/User');
+
+const jwt = require("jsonwebtoken");
+const bodyParser = require("body-parser");
+require("dotenv").config();
+
+const accessTokenSecret = process.env.TOKEN_SECRET;
+
+router.post("/login", async function (req, res) {
+    const user = await User.findOne({
+        email: req.body.email,
+        password: req.body.password,
+    });
+
+    if (user) {
+        // Generate an access token
+        const accessToken = jwt.sign(
+            { id: user._id },
+            accessTokenSecret
+        );
+
+
+        res.json({
+            accessToken,
+
+        });
+    } else {
+        res.json({ error: "Username or password incorrect" });
+    }
+});
+
+router.post('/newUser', function (req, res, next) {
+    User.create({
+
+        name: req.body.name,
+        email: req.body.email,
+        password: req.body.password,
+
+    }
+    ).then(function (item) {
+        res.send(item);
+    }).catch(next);
+
+});
+module.exports = router;
+
+
+back-end>schemas>Event.js:
+const mongoose = require('mongoose');
+
+const Schema = mongoose.Schema;
+
+const eventSchema = new Schema({
+    name: { type: String, required: true},
+    description: { type: String, required: true},
+    date: { type: String, required: true },
+    time: { type: String, required: true},
+    venue: { type: String, required: true},
+    image: { type: String}
+    
+});
+
+module.exports = mongoose.model('event', eventSchema);
+
+back-end>schemas>User.js:
+const mongoose = require('mongoose');
+
+const Schema = mongoose.Schema;
+
+const userSchema = new Schema({
+    name: { type: String, required: true},
+    email: { type: String, required: true},
+    password: { type: String, required: true },
+    
+});
+
+module.exports = mongoose.model('users', userSchema);
+
+back-end>.env:
+
+ATLAS_URI= mongodb://atlas-sql-677123d20a8c3b64272e2f15-a5p8e.a.query.mongodb.net/myVirtualDatabase?ssl=true&authSource=admin
+TOKEN_SECRET = "Adsa@dw23#423sd3$24335@#42322"
+PORT = 3000
+
+back-end>App.js:
+import React, { Component } from 'react';
+
+class Home extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            events: null,
+            error: null // Store error message
+        }
+    }
+
+    async componentDidMount() {
+        this.loadEvents();
+    }
+
+    async loadEvents() {
+        try {
+            const res = await fetch("http://localhost:3000/event/events/");
+            
+            // Check if response is ok (status 200)
+            if (!res.ok) {
+                throw new Error(`HTTP error! Status: ${res.status}`);
+            }
+            
+            // Check if the response content type is JSON
+            const contentType = res.headers.get("Content-Type");
+            if (contentType && contentType.includes("application/json")) {
+                const data = await res.json(); // Parse JSON if the response is JSON
+                this.setState({ events: data });
+            } else {
+                throw new Error('Expected JSON response, but received something else.');
+            }
+
+        } catch (e) {
+            // If there is an error (network or JSON parsing), store the error
+            this.setState({ error: e.message });
+            console.log('Error:', e.message);
+        }
+    }
+
+    render() {
+        let eventlist;
+
+        if (this.state.events !== null) {
+            eventlist = this.state.events.map((event, key) => {
+                return (
+                    <div key={key} className="card col-md-6 col-lg-3 m-4">
+                        <div>
+                            <img src={event.image} id="homeImg" className="mt-2" alt="..." />
+                        </div>
+                        <div className="card-body">
+                            <h5 className="card-title">{event.name}</h5>
+                            <p className="card-text">{event.description}</p>
+                            <a href="#" className="btn btn-outline-secondary w-100">{event.date} @ {event.time} Hrs</a>
+                            <ul className="list-group list-group-flush">
+                                <li className="list-group-item"></li>
+                                <li className="list-group-item mx-auto">{event.venue}</li>
+                            </ul>
+                        </div>
+                    </div>
+                );
+            });
+        }
+
+        // Display error if it exists
+        if (this.state.error) {
+            return (
+                <div className="container mt-5">
+                    <h3 className="text-center text-danger">{this.state.error}</h3>
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <div id="carouselExampleSlidesOnly" className="carousel" data-ride="carousel">
+                    <div className="carousel-inner">
+                        <div className="carousel-item active">
+                            <img className="d-block w-100" src={require('../../img/banner.jpg')} alt="First slide" />
+                            <div className="carousel-caption d-none d-md-block align-center">
+                                <h1 className="drop-shadow">Eventzz</h1>
+                                <h3 className="drop-shadow">Your Trusted Event Manager..</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="container">
+                    <div>
+                        <h3 className="text-center mt-5">Upcoming Events...</h3>
+                        <div className="row mx-auto">
+                            {eventlist}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+}
+
+export default Home;
+
+back-end>package.json:
+{
+  "name": "back-end",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "jsonwebtoken": "^8.5.1",
+    "mongoose": "^5.9.18"
+  }
+}
+
+Now, let me provide you the code of the front-end which is as follows:
+
+front-end>src>Authentication>Auth.js:
+const getToken = () => { 
+    return localStorage.getItem('token');
+}
+
+const getUserLevel = () => {
+    if (isAuthenticated()) {
+        const user = parseJwt(getToken());
+        return user.role;
+    }
+}
+
+const isAuthenticated = () => {
+    if (getToken() == null) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+const getUserId = () => {
+    let uId=null;
+    const user = parseJwt(getToken());
+   
+    uId =user.id;
+    
+    return uId;
+}
+
+const parseJwt = (token)=> {
+    if (!token) { return; }
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace('-', '+').replace('_', '/');
+    return JSON.parse(window.atob(base64));
+}
+
+const logout = () => {
+    if (isAuthenticated()) {
+        localStorage.removeItem('token');
+        console.log("User Logged Out")
+    }
+}
+module.exports = {
+    getToken,
+    getUserLevel,
+    isAuthenticated,
+    getUserId,
+    logout
+}
+
+
+front-end>src>components>add>Add.js:
+import React, { Component } from 'react';
+import Auth from '../../Authentication/Auth';
+
+class Add extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            name: "",
+            description: "",
+            date: "",
+            time: "",
+            venue: "",
+            events:null,
+            image: ""
+        }
+        this.handleChange = this.handleChange.bind(this);
+        this.handleSubmit = this.handleSubmit.bind(this);
+    }
+    async componentDidMount() {
+        this.loadEvents();
+    }
+
+    async loadEvents() {
+        try {
+            const res = await fetch("http://localhost:5000/event/events/");
+            const data = await res.json();
+            //updateing state with lastest data
+            this.setState({
+                events: data,
+            });
+            
+        } catch (e) {
+            //if failed to communicate with api this code block will run
+            console.log(e);
+        }
+    }
+
+    handleChange(event) {
+        const target = event.target;
+        const value = target.value
+        const name = target.name;
+
+        this.setState({
+            [name]: value
+
+        });
+    }
+
+    async handleSubmit(event) {
+        event.preventDefault();
+        console.log(this.state);
+        if (this.state.name.trim() !== 0) {
+            try {
+                const requestOptions = {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json",token: Auth.getToken()  },
+                    body: JSON.stringify({
+                        name: this.state.name,
+                        description: this.state.description,
+                        date: this.state.date,
+                        time: this.state.time,
+                        venue: this.state.venue,
+                        image: this.state.image
+
+                    }),
+                };
+                await fetch(
+                    "http://localhost:5000/event/newEvent",
+                    requestOptions
+                );
+                this.loadEvents();
+                this.setState({
+                    name: "",
+                    description: "",
+                    date: "",
+                    time: "",
+                    venue: "",
+                    image: ""
+                });
+                alert("Aded successfully!");
+            } catch (e) {
+                console.log(e);
+            }
+        }
+    }
+    
+  async deleteEvent(id) {
+    try {
+      const requestOptions = {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json",token: Auth.getToken()  },
+        body: JSON.stringify({ id: id }),
+      };
+      await fetch("http://localhost:5000/event/events", requestOptions);
+      alert("Deleted");
+      this.loadEvents();
+    } catch (e) {
+      console.log(e);
+    }
+  }
+
+
+
+
+
+
+    render() {
+        let eventlist;
+
+        if (this.state.events !== null) {
+            eventlist = this.state.events.map((event, key) => {
+                return (
+                    <ul key={key} className="list-group list-group-flush">
+                        <li className="list-group-item"> </li>
+                        <div className="row m-2">
+                <h4 className="col-10">{key +1} . {event.name}</h4>  <button type="" className="btn btn-danger col-1 " onClick={(e) => { if (window.confirm('Are you sure you wish to delete this item?')) this.deleteEvent(event._id) } }>Delete</button>
+                        </div>
+
+                    </ul>
+                )
+            });
+        }
+        return (
+            <div className="container">
+                <div className="row">
+                    <form className="mt-5 col-lg-6 mx-auto" onSubmit={this.handleSubmit}>
+                        <div className="form-group row">
+                            <label for="inputEmail3" className="col-sm-2 col-form-label">Name</label>
+                            <div className="col-sm-10">
+                                <input type="text" name="name" onChange={this.handleChange} className="form-control" value={this.state.name} placeholder="Name of the event" />
+                            </div>
+                        </div>
+                        <div className="form-group row">
+                            <label for="inputEmail3" className="col-sm-2 col-form-label">Description</label>
+                            <div className="col-sm-10">
+                                <input type="text" name="description" onChange={this.handleChange} className="form-control" value={this.state.description} placeholder="Small description" />
+                            </div>
+                        </div>
+                        <div className="form-group row">
+                            <label for="inputPassword3" className="col-sm-2 col-form-label">Date</label>
+                            <div className="col-sm-10">
+                                <input type="Date" name="date" onChange={this.handleChange} className="form-control" value={this.state.date} />
+                            </div>
+                        </div>
+                        <div className="form-group row">
+                            <label for="inputPassword3" className="col-sm-2 col-form-label">Time</label>
+                            <div className="col-sm-10">
+                                <input type="time" name="time" onChange={this.handleChange} className="form-control" value={this.state.time} placeholder="HH/MM" />
+                            </div>
+                        </div>
+                        <div className="form-group row">
+                            <label for="inputPassword3" className="col-sm-2 col-form-label">Venue</label>
+                            <div className="col-sm-10">
+                                <input type="text" name="venue" className="form-control" onChange={this.handleChange} value={this.state.venue} placeholder="Place where the event happens" />
+                            </div>
+                        </div>
+                        <div className="form-group row">
+                            <label for="inputPassword3" className="col-sm-2 col-form-label">Image</label>
+                            <div className="col-sm-10">
+                                <input type="text" name="image" className="form-control" onChange={this.handleChange} value={this.state.image} placeholder="Url of the Image" />
+                            </div>
+                        </div>
+
+
+                        <div className="form-group">
+                            <div className=" mx-auto">
+                                <button type="submit" className="btn btn-success col-3 m-2">Submit</button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                </div>
+                <div className="">
+                    {eventlist}
+
+                </div>
+            </div>
+        );
+    }
+}
+
+export default Add;
+
+front-end>src>components>alert>Alert.js:
+
+  
+import React from "react";
+
+const Alert = (props) => {
+  let theme = "alert alert-dismissible alert-"+props.theme;
+
+  return (
+    <div hidden={!props.show} className={theme} role="alert">
+      {props.msg}
+      <button
+        type="button"
+        className="close"
+        onClick={props.hideAlert}
+        aria-label="Close"
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  );
+};
+
+export default Alert;
+
+front-end>src>components>home>Home.js:
+import React, { Component } from 'react';
+
+class Home extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            events: null,
+            error: null, // To store error messages
+        };
+    }
+
+    async componentDidMount() {
+        this.loadEvents();
+    }
+
+    async loadEvents() {
+        try {
+            const res = await fetch("http://localhost:3000/event/events/");
+
+            // Check if the response is successful (status code 200)
+            if (!res.ok) {
+                throw new Error(`HTTP error! Status: ${res.status}`);
+            }
+
+            // Check if the response is JSON (by inspecting the Content-Type header)
+            const contentType = res.headers.get("Content-Type");
+            if (contentType && contentType.includes("application/json")) {
+                const data = await res.json();
+                this.setState({ events: data });
+            } else {
+                // If the response is not JSON (maybe HTML), throw an error
+                const errorMessage = await res.text();  // Get the response as text to display it
+                throw new Error(`Expected JSON, but received HTML. Response: ${errorMessage}`);
+            }
+        } catch (e) {
+            this.setState({ error: e.message });
+            console.error('Error:', e.message);  // Log the error to the console
+        }
+    }
+
+    render() {
+        let eventlist;
+
+        if (this.state.events !== null) {
+            eventlist = this.state.events.map((event, key) => {
+                return (
+                    <div key={key} className="card col-md-6 col-lg-3 m-4">
+                        <div>
+                            <img src={event.image} id="homeImg" className="mt-2" alt="Event" />
+                        </div>
+                        <div className="card-body">
+                            <h5 className="card-title">{event.name}</h5>
+                            <p className="card-text">{event.description}</p>
+                            <a href="#" className="btn btn-outline-secondary w-100">{event.date} @ {event.time} Hrs</a>
+                            <ul className="list-group list-group-flush">
+                                <li className="list-group-item"></li>
+                                <li className="list-group-item mx-auto">{event.venue}</li>
+                            </ul>
+                        </div>
+                    </div>
+                );
+            });
+        }
+
+        // If there's an error, show it
+        if (this.state.error) {
+            return (
+                <div className="container mt-5">
+                    <h3 className="text-center text-danger">{this.state.error}</h3>
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <div id="carouselExampleSlidesOnly" className="carousel" data-ride="carousel">
+                    <div className="carousel-inner">
+                        <div className="carousel-item active">
+                            <img className="d-block w-100" src={require('../../img/banner.jpg')} alt="First slide" />
+                            <div className="carousel-caption d-none d-md-block align-center">
+                                <h1 className="drop-shadow">Eventzz</h1>
+                                <h3 className="drop-shadow">Your Trusted Event Manager..</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="container">
+                    <div>
+                        <h3 className="text-center mt-5">Upcoming Events...</h3>
+                        <div className="row mx-auto">
+                            {eventlist}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+}
+
+export default Home;
+
+front-end>src>components>login>Login.js:
+import React, { Component } from 'react';
+import { Redirect } from "react-router-dom";
+
+import Alert from "../alert/Alert";
+import Auth from '../../Authentication/Auth';
+
+class Login extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+        email: "",
+      password: "",
+      redirect: false,
+      userRegAlert: false,
+      userRegMsg: "",
+      userRegTheme: "",
+      isLogged:false
+        }
+        
+        this.onChange = this.onChange.bind(this);
+        this.addlogin = this.addlogin.bind(this);
+    }
+    onChange(event) {
+        const target = event.target;
+        const value = target.value;
+        const name = target.name;
+    
+        this.setState({
+          [name]: value,
+        });
+      }
+
+      async addlogin(event) {
+        event.preventDefault();
+        if (this.state.email.trim() !== 0) {
+            this.setState({
+                userRegAlert: false,
+              });
+          try {
+            const requestOptions = {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                email: this.state.email.toLowerCase(),
+                password: this.state.password,
+              }),
+            };
+            const res = await fetch(
+              "http://localhost:3000/user/login",
+              requestOptions
+            );
+    
+            const data = await res.json();
+    
+            if (data.hasOwnProperty("accessToken")) {
+              localStorage.setItem("token", data.accessToken);
+              this.setState({
+                redirect: true,
+              });
+            } else {
+              this.setState({
+                userRegMsg: data.error,
+                userRegAlert: true,
+                userRegTheme: "danger",
+              });
+            }
+          } catch (e) {
+            console.log(e);
+          }
+        }
+      }
+    
+    render() {
+        if (this.state.redirect) {
+            return <Redirect to="/home" />;
+          }
+        return (
+            
+            <div className="container">
+                <Alert
+                        show={this.state.userRegAlert}
+                        theme={this.state.userRegTheme}
+                        msg={this.state.userRegMsg}
+                        hideAlert={this.hideAlert}
+                      />
+                <div className="row">
+                    <form className="mt-5 col-lg-6 mx-auto" onSubmit={this.addlogin}>
+                    <div class="form-group row">
+                            <p>New to Eventzz? Quickly <a href="register"><strong>signup</strong></a> for an account now.</p>
+                            
+                        </div>
+                        
+                        <div class="form-group row">
+                            <label for="inputEmail3" class="col-sm-2 col-form-label">Email</label>
+                            <div class="col-sm-10">
+                                <input type="email" name="email" onChange={this.onChange} class="form-control" id="inputEmail3" value={this.state.email}
+ />
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label for="inputPassword3" class="col-sm-2 col-form-label">Password</label>
+                            <div class="col-sm-10">
+                                <input type="password" onChange={this.onChange} name="password" class="form-control" id="inputPassword3" value={this.state.password}
+/>
+                            </div>
+                        </div>
+
+
+                        <div class="form-group">
+                            <div class=" mx-auto">
+                                <button type="submit" class="btn btn-primary col-3 mt-2">Log in</button>
+                               
+                            </div>
+                            
+                        </div>
+
+                    </form>
+                    </div>
+                </div>
+       
+        );
+    }
+}
+
+export default Login;
+
+front-end>src>components>register>Register.js:
+
+import React, { Component } from 'react';
+import { Redirect } from "react-router-dom";
+import Alert from "../alert/Alert";
+class Register extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            name: "",
+            email: "",
+            password1: "",
+            password2: "",
+            redirect: false,
+            userRegAlert: false,
+            userRegMsg: "",
+            userRegTheme: ""
+        }
+        this.handleChange = this.handleChange.bind(this);
+        this.handleSubmit = this.handleSubmit.bind(this);
+    }
+    handleChange(event) {
+        const target = event.target;
+        const value = target.value
+        const name = target.name;
+
+        this.setState({
+            [name]: value
+
+        });
+    }
+
+    async handleSubmit(event) {
+        event.preventDefault();
+        console.log(this.state);
+        this.setState({
+            userRegAlert: false,
+          });
+        if(this.state.password1!==this.state.password2){
+            this.setState({
+                userRegMsg: "Password confirmation failed!",
+                userRegAlert: true,
+                userRegTheme: "danger",
+              });
+        }
+        if (this.state.name.trim() !== 0 && this.state.password1===this.state.password2) {
+            try {
+                const requestOptions = {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: this.state.name,
+                        email: this.state.email.toLowerCase(),
+                        password: this.state.password1,
+
+                    }),
+                };
+                await fetch(
+                    "http://localhost:3000/user/newUser",
+                    requestOptions
+                );
+                alert("You have successfully registered!");
+
+                this.setState({
+                    name: "",
+                    email: "",
+                    password1: "",
+                    password2: "",
+                    redirect:true
+                });
+            } catch (e) {
+                console.log(e);
+            }
+        }
+    }
+
+    render() {
+        if (this.state.redirect) {
+            return <Redirect to="/login" />;
+          }
+        return (
+            
+
+            <div className="container">
+                <Alert
+                        show={this.state.userRegAlert}
+                        theme={this.state.userRegTheme}
+                        msg={this.state.userRegMsg}
+                        hideAlert={this.hideAlert}
+                      />
+                <div className="row">
+                    <form className="mt-5 col-lg-6 mx-auto" onSubmit={this.handleSubmit}>
+                        <div class="form-group row">
+                            <p>Already have an account? Quickly <a href="login"><strong>sign in</strong></a> for your account now.</p>
+
+                        </div>
+                        <div class="form-group row">
+                            <label for="inputEmail3" class="col-sm-2 col-form-label">Name</label>
+                            <div class="col-sm-10">
+                                <input type="text" name="name" onChange={this.handleChange} class="form-control" id="inputEmail3" value={this.state.name} />
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label for="inputEmail3" class="col-sm-2 col-form-label">Email</label>
+                            <div class="col-sm-10">
+                                <input type="email" name="email" onChange={this.handleChange} class="form-control" id="inputEmail3" value={this.state.email} />
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label for="inputPassword3" class="col-sm-2 col-form-label">Password</label>
+                            <div class="col-sm-10">
+                                <input type="password" name="password1" onChange={this.handleChange} class="form-control" id="inputPassword3" value={this.state.password1} />
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label for="inputPassword3" class="col-sm-2 col-form-label">Confirmation</label>
+                            <div class="col-sm-10">
+                                <input type="password" name="password2" onChange={this.handleChange} class="form-control" id="inputPassword3" value={this.state.password2} />
+                            </div>
+                        </div>
+
+
+                        <div class="form-group">
+                            <div class=" mx-auto">
+                                <button type="submit" class="btn btn-success col-3 mt-2">Register</button>
+                            </div>
+
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        );
+    }
+}
+
+export default Register;
+
+front-end>src>components>navbar>Navbar.js:
+
+import React, { Component } from 'react';
+import Auth from '../../Authentication/Auth';
+
+class Navbar extends Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            isLogged:false
+        }
+
+        if(Auth.isAuthenticated()){
+            this.setState({ isLogged:true});
+        }
+    }
+
+    render() {
+        
+        return (
+            <div className="">
+                <nav className="navbar fixed-top navbar-expand-lg navbar-dark bg-dark ">
+                    <button className="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarTogglerDemo03" aria-controls="navbarTogglerDemo03" aria-expanded="false" aria-label="Toggle navigation">
+                        <span className="navbar-toggler-icon"></span>
+                    </button>
+                    <a className="navbar-brand" href="home"><img src={require('../../img/logo.png')} className="d-inline-block align-top mr-2" width="60" height="35" alt="asd" />
+                        </a>
+
+                    <div className="collapse navbar-collapse  mx-auto" id="navbarTogglerDemo03">
+                        <ul className="navbar-nav mx-auto mt-2 mt-lg-0 ">
+                            <li className="nav-item ">
+                                <a className="nav-link" href="home">Home </a>
+                            </li>
+                            
+                            <li className="nav-item ">
+                            <a className="nav-link" href={Auth.isAuthenticated()?"/add":"/home"}>
+                                    {Auth.isAuthenticated() ? "Manage Events" : ""}
+                                    </a>
+                            </li>
+                            <li className="nav-item">
+                                    <a className="nav-link" href={Auth.isAuthenticated()?"/logout":"/login"}>
+                                    {Auth.isAuthenticated() ? "Logout" : "Login/Register"}
+                                    </a>
+                            </li>
+                            
+                        </ul>
+
+                    </div>
+
+                </nav>
+                <br/><br/>
+            </div>
+        );
+    }
+}
+
+export default Navbar;
+
+front-end>src>App.js:
+import React from 'react';
+import Navbar from './components/navbar/Navbar';
+import { BrowserRouter, Switch, Route } from 'react-router-dom'
+import './App.css';
+
+import Login from './components/login/Login';
+import Register from './components/login/Register';
+import Home from './components/Home/Home';
+import Add from './components/add/Add';
+import Auth from "./Authentication/Auth";
+
+function App() {
+  return (
+    <div >
+
+
+      <BrowserRouter>
+        <Switch>
+
+          <Route path="/login" exact>
+            <Navbar />
+            <Login />
+          </Route>
+          <Route path="/register" exact>
+            <Navbar />
+            <Register />
+          </Route>
+          <Route path="/home" exact>
+            <Navbar />
+            <Home />
+          </Route>
+          <Route
+            path="/logout"
+            render={() => {
+              Auth.logout();
+              return (
+                <div>
+                   <Navbar />
+                  <Home />
+                </div>
+              );
+            }}
+          />
+          <Route path="/add" component={Add} exact >
+          <Navbar />
+                  <Add />
+          </Route>
+          <Route path="*">
+              <Navbar />
+              <Home />
+            </Route>
+        </Switch>
+      </BrowserRouter>
+    </div>
+  );
+}
+
+export default App;
